@@ -9,6 +9,8 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import logging
+from logging.handlers import RotatingFileHandler
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -51,7 +53,13 @@ class Position:
 def log(msg: str) -> None:
     """Log with timestamp."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{ts}] {msg}", flush=True)
+    line = f"[{ts}] {msg}"
+    print(line, flush=True)
+    try:
+        logger = logging.getLogger("sol_dip_bot")
+        logger.info(msg)
+    except Exception:
+        pass
 
 
 def send_telegram_message(text: str) -> None:
@@ -444,6 +452,19 @@ if __name__ == "__main__":
         log("Running in dry-run mode: external calls will be simulated")
     if ONCE:
         log("Running single-cycle mode (--once)")
+    # Configure rotating file logger
+    try:
+        log_dir = os.path.dirname(os.path.abspath(__file__))
+        log_path = os.path.join(log_dir, "sol_dip_bot.log")
+        logger = logging.getLogger("sol_dip_bot")
+        logger.setLevel(logging.INFO)
+        handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=3)
+        formatter = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
+        handler.setFormatter(formatter)
+        if not logger.handlers:
+            logger.addHandler(handler)
+    except Exception:
+        pass
     # Safety checks before starting live mode
     if not DRY_RUN:
         # Check onchainos binary

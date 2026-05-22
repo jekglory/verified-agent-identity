@@ -117,3 +117,29 @@ Prompt injection and arbitrary code execution are structurally impossible: the e
 ## Documentation
 
 See [SKILL.md](SKILL.md) for detailed usage instructions and examples.
+
+## SOL Dip Bot — quick usage
+
+The repository includes a simple SOL buy-dip bot `sol_dip_bot.py` for demonstration.
+
+- Run a safe local test (simulates onchainos):
+
+```bash
+python3 sol_dip_bot.py --dry-run --once
+```
+
+- Continuous dry-run (daemon):
+
+```bash
+python3 sol_dip_bot.py --dry-run
+```
+
+- Environment variables:
+
+- `ONCHAINOS_BIN`: path to `onchainos` binary (default `/home/codespace/.local/bin/onchainos`).
+- `MAX_TRADES_PER_SESSION`: integer limit of trades per session (default `10`).
+- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`: required for live mode notifications.
+
+Notes:
+- Use `--dry-run` for offline testing; in live mode the script requires `onchainos` and Telegram credentials.
+- Logs are written to `sol_dip_bot.log` with rotation (1MB, 3 backups).
