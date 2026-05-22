@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "starter-coach": {
+      "source": "okx/plugin-store",
+      "sourceType": "github",
+      "skillPath": "skills/starter-coach/SKILL.md",
+      "computedHash": "b54b3ac3dc7aa497c10ca77118f058106961f7625076b2ad4fc73aff467bddf2"
+    }
+  }
+}

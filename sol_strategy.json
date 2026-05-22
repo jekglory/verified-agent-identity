@@ -1,0 +1,57 @@
+{
+  "meta": {
+    "name": "sol_dip_ma10",
+    "version": "1.0",
+    "risk_tier": "aggressive",
+    "description": "SOL buy-dip strategy using MA5/MA10 on Solana with tight stop loss for a small balance.",
+    "author_intent": "Build a SOL buy-dip strategy with MA5/MA10 for 0.0025 SOL capital"
+  },
+  "instrument": {
+    "symbol": "SOL-USDC",
+    "timeframe": "5m"
+  },
+  "entry": {
+    "type": "ma_cross",
+    "fast_period": 5,
+    "slow_period": 10,
+    "ma_type": "EMA"
+  },
+  "exit": {
+    "stop_loss": {
+      "pct": 1.8
+    },
+    "take_profit": {
+      "pct": 5
+    },
+    "other": [
+      {
+        "type": "time_exit",
+        "max_bars": 144
+      }
+    ]
+  },
+  "sizing": {
+    "type": "fixed_pct",
+    "pct": 10
+  },
+  "filters": [
+    {
+      "type": "cooldown",
+      "bars": 2
+    }
+  ],
+  "risk_overlays": [
+    {
+      "type": "max_daily_trades",
+      "n": 1
+    },
+    {
+      "type": "max_concurrent_positions",
+      "n": 1
+    },
+    {
+      "type": "session_loss_pause",
+      "max_consecutive_losses": 2
+    }
+  ]
+}
