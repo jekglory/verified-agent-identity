@@ -3,3 +3,24 @@ scripts/node_modules
 .DS_Store
 *.zip
 upload.sh
+node_modules
+
+# Local agent/dev artifacts
+.agents/
+.clawhub/
+
+# Python cache and virtualenv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+env/
+
+# Logs
+*.log
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+
