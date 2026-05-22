@@ -29,6 +29,10 @@ SLIPPAGE_PCT = 1.0
 DRY_RUN = False
 ONCE = False
 
+# Configurable binaries and limits (can be set via env)
+ONCHAINOS_BIN = os.getenv("ONCHAINOS_BIN", "/home/codespace/.local/bin/onchainos")
+MAX_TRADES_PER_SESSION = int(os.getenv("MAX_TRADES_PER_SESSION", "10"))
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -137,7 +141,7 @@ def run_cmd(args: list[str]) -> dict[str, Any]:
 
 def get_wallet_address() -> str:
     """Get the Solana wallet address from Agentic Wallet."""
-    data = run_cmd(["/home/codespace/.local/bin/onchainos", "wallet", "balance", "--chain", "solana"])
+    data = run_cmd([ONCHAINOS_BIN, "wallet", "balance", "--chain", CHAIN])
     details = data.get("data", {}).get("details", [])
     if not details:
         return ""
@@ -151,7 +155,7 @@ def get_wallet_address() -> str:
 
 def get_balance() -> float:
     """Get current SOL balance in the wallet."""
-    data = run_cmd(["/home/codespace/.local/bin/onchainos", "wallet", "balance", "--chain", "solana"])
+    data = run_cmd([ONCHAINOS_BIN, "wallet", "balance", "--chain", CHAIN])
     assets = data.get("data", {}).get("details", [{}])[0].get("tokenAssets", [])
     for asset in assets:
         if asset.get("symbol") == "SOL":
@@ -166,10 +170,10 @@ def swap_sol_to_usdc(amount_sol: float, wallet: str) -> dict[str, Any] | None:
         
         # Get quote first
         quote_args = [
-            "/home/codespace/.local/bin/onchainos",
+            ONCHAINOS_BIN,
             "swap",
             "quote",
-            "--chain", "solana",
+            "--chain", CHAIN,
             "--from-token", TOKEN_ADDRESS,
             "--to-token", USDC_ADDRESS,
             "--amount", str(int(amount_sol * 1e9)),  # Convert to lamports
@@ -187,10 +191,10 @@ def swap_sol_to_usdc(amount_sol: float, wallet: str) -> dict[str, Any] | None:
             
             # Execute swap
             exec_args = [
-                "/home/codespace/.local/bin/onchainos",
+                ONCHAINOS_BIN,
                 "swap",
                 "execute",
-                "--chain", "solana",
+                "--chain", CHAIN,
                 "--from-token", TOKEN_ADDRESS,
                 "--to-token", USDC_ADDRESS,
                 "--amount", str(int(amount_sol * 1e9)),
@@ -215,10 +219,10 @@ def swap_usdc_to_sol(amount_usdc: float, wallet: str) -> dict[str, Any] | None:
         notify(f"Initiating exit swap: {amount_usdc} USDC to SOL")
         
         quote_args = [
-            "/home/codespace/.local/bin/onchainos",
+            ONCHAINOS_BIN,
             "swap",
             "quote",
-            "--chain", "solana",
+            "--chain", CHAIN,
             "--from-token", USDC_ADDRESS,
             "--to-token", TOKEN_ADDRESS,
             "--amount", str(int(amount_usdc * 1e6)),  # USDC is 6 decimals
@@ -235,10 +239,10 @@ def swap_usdc_to_sol(amount_usdc: float, wallet: str) -> dict[str, Any] | None:
             log(f"Exit quote OK: {routes[0].get('outputAmount', 0)} SOL received")
             
             exec_args = [
-                "/home/codespace/.local/bin/onchainos",
+                ONCHAINOS_BIN,
                 "swap",
                 "execute",
-                "--chain", "solana",
+                "--chain", CHAIN,
                 "--from-token", USDC_ADDRESS,
                 "--to-token", TOKEN_ADDRESS,
                 "--amount", str(int(amount_usdc * 1e6)),
@@ -385,8 +389,12 @@ def main() -> None:
                 if bal < POSITION_SIZE_SOL:
                     log(f"ERROR: Insufficient SOL balance ({bal} < {POSITION_SIZE_SOL}). Cannot enter.")
                 else:
-                    log(f"Current balance: {bal} SOL")
-                    log(f"Entering {POSITION_SIZE_SOL} SOL...")
+                    # Safety: enforce max trades per session
+                    if session_trades >= MAX_TRADES_PER_SESSION:
+                        log(f"TRADE LIMIT REACHED: {session_trades} >= {MAX_TRADES_PER_SESSION}. Skipping entry.")
+                    else:
+                        log(f"Current balance: {bal} SOL")
+                        log(f"Entering {POSITION_SIZE_SOL} SOL...")
                     
                     # Swap SOL -> USDC (buying at market)
                     result = swap_sol_to_usdc(POSITION_SIZE_SOL, wallet)
@@ -436,4 +444,14 @@ if __name__ == "__main__":
         log("Running in dry-run mode: external calls will be simulated")
     if ONCE:
         log("Running single-cycle mode (--once)")
+    # Safety checks before starting live mode
+    if not DRY_RUN:
+        # Check onchainos binary
+        if not os.path.isfile(ONCHAINOS_BIN) or not os.access(ONCHAINOS_BIN, os.X_OK):
+            log(f"ERROR: onchainos binary not found or not executable at {ONCHAINOS_BIN}. Exiting.")
+            sys.exit(1)
+        # Require telegram config for notifications
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            log("ERROR: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set for live mode. Exiting.")
+            sys.exit(1)
     main()
