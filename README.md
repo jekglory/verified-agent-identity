@@ -120,26 +120,50 @@ See [SKILL.md](SKILL.md) for detailed usage instructions and examples.
 
 ## SOL Dip Bot — quick usage
 
-The repository includes a simple SOL buy-dip bot `sol_dip_bot.py` for demonstration.
+`sol_dip_bot.py` trades SOL/USDC on Solana through the official OKX Onchain OS CLI
+(`onchainos`) and its Agentic Wallet. Parameters come from `sol_strategy.json`.
 
-- Run a safe local test (simulates onchainos):
+- Entry: when EMA5 crosses above EMA10 on closed 5m bars, buy SOL with 10% of the wallet's USDC.
+- Exit: sell the SOL back to USDC on -1.8% stop loss, +5% take profit, or after 144 bars (12h).
+- Risk overlays: max 1 entry per UTC day, 2-bar cooldown after an exit, pause after 2
+  consecutive losses (until UTC 00:00), and `MAX_TRADES_PER_SESSION`.
+- Open position, daily counters, and trade history persist in `sol_dip_bot_state.json`,
+  so a restart resumes an open position.
+
+### Setup
 
 ```bash
-python3 sol_dip_bot.py --dry-run --once
+npx -y @okxweb3/onchainos-installer install          # installs onchainos CLI
+npx -y skills add okx/onchainos-skills --skill '*' -a universal -y   # official OKX agent skills (.agents/skills)
+onchainos wallet login                              # log in to the Agentic Wallet
+onchainos wallet addresses --chain solana           # fund this address with USDC (+ a little SOL for fees)
 ```
 
-- Continuous dry-run (daemon):
+Set per-transaction and daily limits in Agentic Wallet Policy Settings before running live.
+
+### Run
 
 ```bash
-python3 sol_dip_bot.py --dry-run
+python3 sol_dip_bot.py --dry-run --once   # one paper cycle (real market data, simulated swaps)
+python3 sol_dip_bot.py --dry-run          # continuous paper trading
+python3 sol_dip_bot.py                    # LIVE trading
+./start_sol_dip_bot.sh                    # LIVE trading in the background (nohup)
 ```
 
-- Environment variables:
+Dry-run uses real market data when `onchainos` is installed and synthetic data otherwise.
+Paper balances start at `PAPER_USDC` and persist in `sol_dip_bot_state.json.paper`.
 
-- `ONCHAINOS_BIN`: path to `onchainos` binary (default `/home/codespace/.local/bin/onchainos`).
-- `MAX_TRADES_PER_SESSION`: integer limit of trades per session (default `10`).
-- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`: required for live mode notifications.
+### Environment variables
 
-Notes:
-- Use `--dry-run` for offline testing; in live mode the script requires `onchainos` and Telegram credentials.
-- Logs are written to `sol_dip_bot.log` with rotation (1MB, 3 backups).
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ONCHAINOS_BIN` | `onchainos` on `PATH`, else `~/.local/bin/onchainos` | CLI path |
+| `MAX_TRADES_PER_SESSION` | `10` | Max entries per process run |
+| `MIN_ORDER_USDC` | `1` | Skip entries smaller than this |
+| `MAX_ORDER_USDC` | `0` (no cap) | Cap on a single entry |
+| `SLIPPAGE_PCT` | `1` | Swap slippage %; empty = CLI auto slippage |
+| `POLL_SECONDS` | `60` | Seconds between cycles |
+| `PAPER_USDC` | `100` | Starting paper balance for dry-run |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | unset | Optional Telegram notifications |
+
+Logs: stdout and `sol_dip_bot.log` (rotating, 1MB x 3).

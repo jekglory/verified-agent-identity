@@ -1,11 +1,53 @@
 {
   "version": 1,
   "skills": {
+    "okx-agent-payments-protocol": {
+      "source": "okx/onchainos-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-agent-payments-protocol/SKILL.md",
+      "computedHash": "cac3f06121c174f3e42bf1fd38a94682b699cc72fd117364f2cf27dc0c454bae"
+    },
+    "okx-agentic-wallet": {
+      "source": "okx/onchainos-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-agentic-wallet/SKILL.md",
+      "computedHash": "ff3c338639281d3313cb4b1854816fc02bd5a176e219feccc32b3e4d464dc2bf"
+    },
+    "okx-ai": {
+      "source": "okx/onchainos-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-ai/SKILL.md",
+      "computedHash": "f40777560464b75aeb3f4f7bb8a4fbf4ee4b99ab68282cc294e99155e9b5eb61"
+    },
+    "okx-dapp-discovery": {
+      "source": "okx/onchainos-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-dapp-discovery/SKILL.md",
+      "computedHash": "f3594bda5eb768519a17bbd1abb8e05821a2fc561ac79b9cb6863bd12db03565"
+    },
+    "okx-defi": {
+      "source": "okx/onchainos-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-defi/SKILL.md",
+      "computedHash": "5e461d4ec78febae9627330fb4264370cd1d82329fc3190b09eb4efbc6a3b3ba"
+    },
+    "okx-dex-market": {
+      "source": "okx/onchainos-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-dex-market/SKILL.md",
+      "computedHash": "a44f0152b013d7fe3b1fa9579cab791df43d7e73796d34676b16dc1eda099b02"
+    },
+    "okx-guide": {
+      "source": "okx/onchainos-skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-guide/SKILL.md",
+      "computedHash": "80a83068480ca822db7e9130b98ce4729c7de4d4da63a92143eec54822effc03"
+    },
     "starter-coach": {
       "source": "okx/plugin-store",
       "sourceType": "github",
       "skillPath": "skills/starter-coach/SKILL.md",
-      "computedHash": "b54b3ac3dc7aa497c10ca77118f058106961f7625076b2ad4fc73aff467bddf2"
+      "computedHash": "6713cb9baaed3a1a0563e89d45786924b36d531425e9a0b0f5a1240e34889a03"
     }
   }
 }
