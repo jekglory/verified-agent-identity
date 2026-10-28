@@ -123,7 +123,10 @@ See [SKILL.md](SKILL.md) for detailed usage instructions and examples.
 `sol_dip_bot.py` trades SOL/USDC on Solana through the official OKX Onchain OS CLI
 (`onchainos`) and its Agentic Wallet. Parameters come from `sol_strategy.json`.
 
-- Entry: when EMA5 crosses above EMA10 on closed 5m bars, buy SOL with 10% of the wallet's USDC.
+- Starting capital can be SOL (`CAPITAL_ASSET=SOL`, default): when the bot has no position, wallet SOL
+  (minus a gas reserve, plus USDC account rent on first use) is treated as an open position entered at
+  the current price. No swap happens until an exit sells it to USDC.
+- Entry: when EMA5 crosses above EMA10 on closed 5m bars, buy SOL with `SIZE_PCT`% (default 10%) of the wallet's USDC.
 - Exit: sell the SOL back to USDC on -1.8% stop loss, +5% take profit, or after 144 bars (12h).
 - Risk overlays: max 1 entry per UTC day, 2-bar cooldown after an exit, pause after 2
   consecutive losses (until UTC 00:00), and `MAX_TRADES_PER_SESSION`.
@@ -136,7 +139,7 @@ See [SKILL.md](SKILL.md) for detailed usage instructions and examples.
 npx -y @okxweb3/onchainos-installer install          # installs onchainos CLI
 npx -y skills add okx/onchainos-skills --skill '*' -a universal -y   # official OKX agent skills (.agents/skills)
 onchainos wallet login                              # log in to the Agentic Wallet
-onchainos wallet addresses --chain solana           # fund this address with USDC (+ a little SOL for fees)
+onchainos wallet addresses --chain solana           # fund this address with SOL (or USDC + a little SOL for fees)
 ```
 
 Set per-transaction and daily limits in Agentic Wallet Policy Settings before running live.
@@ -159,11 +162,14 @@ Paper balances start at `PAPER_USDC` and persist in `sol_dip_bot_state.json.pape
 | --- | --- | --- |
 | `ONCHAINOS_BIN` | `onchainos` on `PATH`, else `~/.local/bin/onchainos` | CLI path |
 | `MAX_TRADES_PER_SESSION` | `10` | Max entries per process run |
-| `MIN_ORDER_USDC` | `0.1` | Skip entries smaller than this |
+| `CAPITAL_ASSET` | `SOL` | `SOL` adopts wallet SOL as a position when flat; `USDC` only trades USDC |
+| `SIZE_PCT` | `sizing.pct` in `sol_strategy.json` (10) | % of USDC per entry; use `100` for tiny wallets |
+| `GAS_RESERVE_SOL` | `0.001` | SOL never traded, kept for fees |
+| `MIN_ORDER_USDC` | `0.1` | Skip entries/adoption smaller than this |
 | `MAX_ORDER_USDC` | `0` (no cap) | Cap on a single entry |
 | `SLIPPAGE_PCT` | `1` | Swap slippage %; empty = CLI auto slippage |
 | `POLL_SECONDS` | `60` | Seconds between cycles |
-| `PAPER_USDC` | `100` | Starting paper balance for dry-run |
+| `PAPER_USDC`, `PAPER_SOL` | `100`, `0` | Starting paper balances for dry-run |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | unset | Optional Telegram notifications |
 
 Logs: stdout and `sol_dip_bot.log` (rotating, 1MB x 3).

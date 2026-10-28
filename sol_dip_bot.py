@@ -42,10 +42,14 @@ def _default_onchainos_bin() -> str:
 ONCHAINOS_BIN = os.getenv("ONCHAINOS_BIN") or _default_onchainos_bin()
 MAX_TRADES_PER_SESSION = int(os.getenv("MAX_TRADES_PER_SESSION", "10"))
 MIN_ORDER_USDC = float(os.getenv("MIN_ORDER_USDC", "0.1"))
+CAPITAL_ASSET = os.getenv("CAPITAL_ASSET", "SOL").upper()  # SOL: adopt wallet SOL as a position when flat
+GAS_RESERVE_SOL = float(os.getenv("GAS_RESERVE_SOL", "0.001"))  # SOL never traded, kept for fees
+USDC_ACCOUNT_RENT_SOL = 0.00204  # one-time rent to create the wallet's USDC token account
 MAX_ORDER_USDC = float(os.getenv("MAX_ORDER_USDC", "0"))  # 0 = no cap
 SLIPPAGE_PCT = os.getenv("SLIPPAGE_PCT", "1")  # empty string = CLI autoSlippage
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "60"))
 PAPER_USDC = float(os.getenv("PAPER_USDC", "100"))
+PAPER_SOL = float(os.getenv("PAPER_SOL", "0"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
@@ -82,7 +86,7 @@ def load_strategy(path: str = STRATEGY_PATH) -> Strategy:
         slow_period=int(cfg["entry"]["slow_period"]),
         stop_loss_pct=float(cfg["exit"]["stop_loss"]["pct"]),
         take_profit_pct=float(cfg["exit"]["take_profit"]["pct"]),
-        size_pct=float(cfg["sizing"]["pct"]),
+        size_pct=float(os.getenv("SIZE_PCT") or cfg["sizing"]["pct"]),
     )
     for item in cfg["exit"].get("other", []):
         if item.get("type") == "time_exit":
@@ -123,7 +127,7 @@ class State:
     last_exit_ts: int = 0
     last_signal_bar_ts: int = 0
     paper_usdc: float = PAPER_USDC
-    paper_sol: float = 0.0
+    paper_sol: float = PAPER_SOL
     history: list[dict[str, Any]] = field(default_factory=list)
 
     def roll_day(self, now: float) -> None:
@@ -335,10 +339,25 @@ def open_position(api: OnchainOS, state: State, s: Strategy, wallet: str, price:
     return True
 
 
+def adopt_sol_position(api: OnchainOS, state: State, price: float) -> bool:
+    """Treat wallet SOL (minus gas/rent reserve) as an open position entered at the current price."""
+    reserve = GAS_RESERVE_SOL + (USDC_ACCOUNT_RENT_SOL if api.balance(USDC_ADDRESS) <= 0 else 0)
+    size = api.balance(NATIVE_SOL) - reserve
+    if size * price < MIN_ORDER_USDC:
+        return False
+    state.position = Position(entry_price=price, size_sol=size, cost_usdc=size * price,
+                              entry_ts=int(time.time()), tx_hash="ADOPTED")
+    notify(f"Using {size:.6f} SOL from the wallet as an open position @ ${price:.4f} "
+           f"(kept {reserve:.5f} SOL for fees)")
+    return True
+
+
 def close_position(api: OnchainOS, state: State, wallet: str, price: float, reason: str) -> None:
     pos = state.position
     assert pos is not None
-    amount = min(pos.size_sol, api.balance(NATIVE_SOL))
+    amount = min(pos.size_sol, api.balance(NATIVE_SOL) - GAS_RESERVE_SOL)
+    if amount <= 0:
+        raise RuntimeError(f"No SOL left to sell above the {GAS_RESERVE_SOL} SOL gas reserve")
     notify(f"EXIT {reason} at ${price:.4f}: swapping {amount:.6f} SOL -> USDC")
     usdc, tx = api.swap(NATIVE_SOL, USDC_ADDRESS, amount, wallet, price)
     pnl = usdc - pos.cost_usdc
@@ -369,6 +388,9 @@ def run_cycle(api: OnchainOS, state: State, s: Strategy, wallet: str, session_tr
         reason = exit_reason(pos, price, now, s)
         if reason:
             close_position(api, state, wallet, price, reason)
+        return session_trades
+
+    if CAPITAL_ASSET == "SOL" and adopt_sol_position(api, state, price):
         return session_trades
 
     last_closed_ts = closed[-1]["ts"]

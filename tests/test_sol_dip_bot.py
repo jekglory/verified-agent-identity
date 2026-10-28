@@ -64,7 +64,7 @@ def test_entry_blocks():
 
 
 def test_paper_round_trip(tmp_path):
-    state = bot.State(paper_usdc=100.0)
+    state = bot.State(paper_usdc=100.0, paper_sol=bot.GAS_RESERVE_SOL)
     api = bot.OnchainOS("/nonexistent/onchainos", paper=True, state=state)
     s = bot.Strategy()
     assert bot.open_position(api, state, s, "PAPER", 100.0)
@@ -75,3 +75,23 @@ def test_paper_round_trip(tmp_path):
     assert abs(state.history[-1]["pnl_usdc"] + 0.5) < 1e-9
     bot.save_state(state, str(tmp_path / "s.json"))
     assert bot.load_state(str(tmp_path / "s.json")).history[-1]["reason"] == "STOP_LOSS"
+
+
+def test_adopt_sol_capital_then_exit():
+    reserve = bot.GAS_RESERVE_SOL + bot.USDC_ACCOUNT_RENT_SOL
+    state = bot.State(paper_usdc=0.0, paper_sol=0.0069)
+    api = bot.OnchainOS("/nonexistent/onchainos", paper=True, state=state)
+    assert bot.adopt_sol_position(api, state, 100.0)
+    assert state.position and abs(state.position.size_sol - (0.0069 - reserve)) < 1e-12
+    assert state.position.entry_price == 100.0
+    bot.close_position(api, state, "PAPER", 105.0, "TAKE_PROFIT")
+    assert state.position is None
+    assert abs(state.paper_sol - reserve) < 1e-12
+    assert abs(state.history[-1]["pnl_usdc"] - (0.0069 - reserve) * 5) < 1e-9
+
+
+def test_adopt_skips_dust():
+    state = bot.State(paper_usdc=0.0, paper_sol=0.003)
+    api = bot.OnchainOS("/nonexistent/onchainos", paper=True, state=state)
+    assert not bot.adopt_sol_position(api, state, 100.0)
+    assert state.position is None
