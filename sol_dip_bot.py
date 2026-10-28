@@ -518,7 +518,7 @@ def chat_reply(history: list[dict], state: State, s: Strategy, wallet: str, mode
 
 
 def start_telegram(api: OnchainOS, state: State, s: Strategy, wallet: str, mode: str) -> TelegramChat | None:
-    if not TELEGRAM_BOT_TOKEN:
+    if not TELEGRAM_BOT_TOKEN or os.getenv("TELEGRAM_LISTEN", "1") == "0":
         return None
     on_text = (lambda _text, hist: chat_reply(hist, state, s, wallet, mode)) if LLM_API_KEY else None
     chat = TelegramChat(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,

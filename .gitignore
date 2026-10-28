@@ -28,3 +28,5 @@ env/
 # SOL dip bot runtime state
 sol_dip_bot_state.json*
 sol_dip_bot.out
+devin_bridge_state.json*
+devin_bridge.out

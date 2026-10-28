@@ -192,3 +192,21 @@ It answers only `TELEGRAM_CHAT_ID`. If the chat ID is unset, send `/start` to th
 
 Any other text goes to the LLM in `LLM_API_KEY`. The bot sends its status, recent trades, and recent log lines as context.
 The AI only answers questions. It cannot trade.
+
+## Chat with Devin from Telegram (`devin_telegram_bridge.py`)
+
+The bridge forwards your Telegram messages to a Devin session and sends Devin's replies back to Telegram.
+It is unofficial, and every session uses Devin ACUs.
+
+1. Create a service user API key (`cog_...`) in Devin under **Settings > Devin API > Service users**.
+2. Run the bridge on a host that stays on (VPS or server):
+
+```bash
+export TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=... DEVIN_API_KEY=cog_... DEVIN_ORG_ID=org-...
+# optional: DEVIN_SESSION_ID=devin-... to continue an existing session, DEVIN_MAX_ACU=10 to cap new sessions
+nohup python3 devin_telegram_bridge.py > devin_bridge.out 2>&1 &
+```
+
+Only one process can poll a Telegram bot. When the bridge runs, start the trading bot with `TELEGRAM_LISTEN=0`.
+The bot still sends trade notifications.
+Telegram commands: `/new <message>` starts a new session and `/session` shows the current session link.
