@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -20,6 +21,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Any
+
+from telegram_chat import TelegramChat, ask_llm
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STRATEGY_PATH = os.getenv("STRATEGY_PATH", os.path.join(BASE_DIR, "sol_strategy.json"))
@@ -52,6 +55,12 @@ PAPER_USDC = float(os.getenv("PAPER_USDC", "100"))
 PAPER_SOL = float(os.getenv("PAPER_SOL", "0"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "")
+
+CLOSE_REQUESTED = threading.Event()  # set by Telegram /close, handled by the main loop
+WAKE = threading.Event()  # interrupts the poll sleep
+RUNTIME: dict[str, Any] = {}  # latest market snapshot for /status and AI chat
 
 logger = logging.getLogger("sol_dip_bot")
 
@@ -126,6 +135,7 @@ class State:
     consecutive_losses: int = 0
     last_exit_ts: int = 0
     last_signal_bar_ts: int = 0
+    paused: bool = False
     paper_usdc: float = PAPER_USDC
     paper_sol: float = PAPER_SOL
     history: list[dict[str, Any]] = field(default_factory=list)
@@ -214,6 +224,8 @@ def exit_reason(pos: Position, price: float, now: float, s: Strategy) -> str | N
 def entry_block_reason(state: State, s: Strategy, session_trades: int, now: float) -> str | None:
     if state.position:
         return "position already open"
+    if state.paused:
+        return "paused via Telegram /pause"
     if session_trades >= MAX_TRADES_PER_SESSION:
         return f"session trade limit reached ({session_trades}/{MAX_TRADES_PER_SESSION})"
     if state.trades_today >= s.max_daily_trades:
@@ -380,6 +392,14 @@ def run_cycle(api: OnchainOS, state: State, s: Strategy, wallet: str, session_tr
     closes = [b["close"] for b in closed]
     fast, slow = ema(closes, s.fast_period), ema(closes, s.slow_period)
     log(f"Price ${price:.4f} | EMA{s.fast_period} {fast[-1]:.4f} | EMA{s.slow_period} {slow[-1]:.4f}")
+    RUNTIME.update(price=price, ema_fast=fast[-1], ema_slow=slow[-1], updated=int(now))
+
+    if CLOSE_REQUESTED.is_set():
+        CLOSE_REQUESTED.clear()
+        if state.position:
+            close_position(api, state, wallet, price, "MANUAL")
+            return session_trades
+        notify("/close ignored: no open position")
 
     if state.position:
         pos = state.position
@@ -390,7 +410,7 @@ def run_cycle(api: OnchainOS, state: State, s: Strategy, wallet: str, session_tr
             close_position(api, state, wallet, price, reason)
         return session_trades
 
-    if CAPITAL_ASSET == "SOL" and adopt_sol_position(api, state, price):
+    if CAPITAL_ASSET == "SOL" and not state.paused and adopt_sol_position(api, state, price):
         return session_trades
 
     last_closed_ts = closed[-1]["ts"]
@@ -407,6 +427,106 @@ def run_cycle(api: OnchainOS, state: State, s: Strategy, wallet: str, session_tr
     if open_position(api, state, s, wallet, price):
         session_trades += 1
     return session_trades
+
+
+HELP_TEXT = """Perintah:
+/status - posisi, PnL, harga & EMA
+/saldo - saldo SOL & USDC wallet bot
+/history - 5 trade terakhir
+/pause - stop entry baru (posisi tetap dijaga SL/TP)
+/resume - lanjut entry
+/close - jual posisi sekarang ke USDC
+Selain perintah, ketik bebas untuk ngobrol dengan AI (kalau LLM_API_KEY di-set)."""
+
+
+def status_text(state: State, s: Strategy, wallet: str, mode: str) -> str:
+    price = RUNTIME.get("price")
+    lines = [f"Mode: {mode} | wallet {wallet}",
+             f"Strategi: {s.timeframe} EMA{s.fast_period}/{s.slow_period}, SL {s.stop_loss_pct}%, "
+             f"TP {s.take_profit_pct}%, max hold {s.max_hold_bars} bar, size {s.size_pct}% USDC"]
+    if price:
+        updated = datetime.fromtimestamp(RUNTIME["updated"]).strftime("%H:%M:%S")
+        lines.append(f"Harga SOL ${price:.4f} | EMA{s.fast_period} {RUNTIME['ema_fast']:.4f} | "
+                     f"EMA{s.slow_period} {RUNTIME['ema_slow']:.4f} (update {updated})")
+    pos = state.position
+    if pos:
+        held_h = (time.time() - pos.entry_ts) / 3600
+        pnl = f" | PnL {(price - pos.entry_price) / pos.entry_price * 100:+.2f}%" if price else ""
+        lines.append(f"Posisi: {pos.size_sol:.6f} SOL @ ${pos.entry_price:.4f}, {held_h:.1f} jam{pnl}")
+    else:
+        lines.append("Posisi: tidak ada")
+    lines.append(f"Trade hari ini {state.trades_today}/{s.max_daily_trades} | rugi beruntun "
+                 f"{state.consecutive_losses}/{s.max_consecutive_losses} | {'PAUSED' if state.paused else 'aktif'}")
+    return "\n".join(lines)
+
+
+def history_text(state: State, n: int = 5) -> str:
+    if not state.history:
+        return "Belum ada trade."
+    rows = []
+    for h in state.history[-n:]:
+        ts = datetime.fromtimestamp(h["exit_ts"]).strftime("%m-%d %H:%M")
+        rows.append(f"{ts} {h['reason']}: {h['entry']['size_sol']:.6f} SOL, PnL {h['pnl_usdc']:+.4f} USDC")
+    return "\n".join(rows)
+
+
+def tail_log(n: int = 15) -> str:
+    try:
+        with open(LOG_PATH, encoding="utf-8") as fh:
+            return "".join(fh.readlines()[-n:])
+    except OSError:
+        return ""
+
+
+def handle_command(name: str, api: OnchainOS, state: State, s: Strategy, wallet: str, mode: str) -> str:
+    if name in ("start", "help"):
+        return HELP_TEXT
+    if name == "status":
+        return status_text(state, s, wallet, mode)
+    if name in ("saldo", "balance"):
+        return f"SOL: {api.balance(NATIVE_SOL):.6f}\nUSDC: {api.balance(USDC_ADDRESS):.4f}"
+    if name == "history":
+        return history_text(state)
+    if name == "pause":
+        state.paused = True
+        return "Entry baru di-pause. Posisi yang ada tetap dijaga SL/TP/max hold."
+    if name == "resume":
+        state.paused = False
+        return "Entry dilanjutkan."
+    if name == "close":
+        if not state.position:
+            return "Tidak ada posisi terbuka."
+        CLOSE_REQUESTED.set()
+        WAKE.set()
+        return "Oke, posisi akan dijual ke USDC di siklus berikutnya (beberapa detik)."
+    return "Perintah tidak dikenal. Ketik /help."
+
+
+def chat_reply(history: list[dict], state: State, s: Strategy, wallet: str, mode: str) -> str:
+    system = (
+        "Kamu asisten untuk bot trading SOL/USDC milik user (OKX Onchain OS, Solana). "
+        "Jawab singkat, santai, pakai bahasa yang sama dengan user. Kamu TIDAK bisa mengeksekusi trade; "
+        "kalau user mau aksi, sarankan perintah: /status /saldo /history /pause /resume /close. "
+        "Jangan memberi janji profit. Data terkini bot:\n"
+        f"{status_text(state, s, wallet, mode)}\n\nTrade terakhir:\n{history_text(state)}\n\n"
+        "Aturan: entry saat EMA cepat cross ke atas EMA lambat di bar yang sudah close; exit di SL/TP/max hold; "
+        f"cooldown {s.cooldown_bars} bar, max {s.max_daily_trades} entry/hari (UTC), pause setelah "
+        f"{s.max_consecutive_losses} rugi beruntun. Kalau CAPITAL_ASSET=SOL, SOL di wallet dipakai sebagai posisi.\n\n"
+        f"Log terakhir:\n{tail_log()}"
+    )
+    return ask_llm(LLM_API_KEY, system, history, LLM_MODEL) or "(AI tidak memberi jawaban)"
+
+
+def start_telegram(api: OnchainOS, state: State, s: Strategy, wallet: str, mode: str) -> TelegramChat | None:
+    if not TELEGRAM_BOT_TOKEN:
+        return None
+    on_text = (lambda _text, hist: chat_reply(hist, state, s, wallet, mode)) if LLM_API_KEY else None
+    chat = TelegramChat(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+                        on_command=lambda name, _args: handle_command(name, api, state, s, wallet, mode),
+                        on_text=on_text, log=log)
+    chat.start()
+    log("Telegram listener started" + ("" if TELEGRAM_CHAT_ID else " (send /start to the bot to get your chat ID)"))
+    return chat
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -449,6 +569,8 @@ def main(argv: list[str] | None = None) -> int:
     if state.position:
         log(f"Resuming open position: {state.position.size_sol:.6f} SOL @ ${state.position.entry_price:.4f}")
 
+    start_telegram(api, state, strategy, wallet, mode)
+
     session_trades = 0
     while True:
         try:
@@ -465,7 +587,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.once:
             break
         try:
-            time.sleep(POLL_SECONDS)
+            WAKE.wait(POLL_SECONDS)
+            WAKE.clear()
         except KeyboardInterrupt:
             log("Stopping bot.")
             break

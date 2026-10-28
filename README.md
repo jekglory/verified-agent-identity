@@ -172,4 +172,23 @@ Paper balances start at `PAPER_USDC` and persist in `sol_dip_bot_state.json.pape
 | `PAPER_USDC`, `PAPER_SOL` | `100`, `0` | Starting paper balances for dry-run |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | unset | Optional Telegram notifications |
 
+| `LLM_API_KEY` | unset | OpenAI (`sk-...`) or Anthropic (`sk-ant-...`) key for Telegram AI chat |
+| `LLM_MODEL` | `gpt-4o-mini` / `claude-3-5-haiku-latest` | Override the chat model |
+
 Logs: stdout and `sol_dip_bot.log` (rotating, 1MB x 3).
+
+### Telegram control and AI chat
+
+With `TELEGRAM_BOT_TOKEN` set, the bot listens to Telegram (long polling, no webhook needed).
+It answers only `TELEGRAM_CHAT_ID`. If the chat ID is unset, send `/start` to the bot and it replies with your chat ID.
+
+| Command | Action |
+| --- | --- |
+| `/status` | Position, PnL, price, EMAs, limits |
+| `/saldo` | Wallet SOL and USDC |
+| `/history` | Last 5 trades |
+| `/pause`, `/resume` | Stop or resume new entries (open positions keep SL/TP/max hold) |
+| `/close` | Sell the open position to USDC now |
+
+Any other text goes to the LLM in `LLM_API_KEY`. The bot sends its status, recent trades, and recent log lines as context.
+The AI only answers questions. It cannot trade.

@@ -9,7 +9,8 @@ import sol_dip_bot as bot  # noqa: E402
 
 
 def run_bot(tmp_path, *args):
-    env = {**os.environ, "ONCHAINOS_BIN": "/nonexistent/onchainos", "STATE_PATH": str(tmp_path / "state.json")}
+    env = {**os.environ, "ONCHAINOS_BIN": "/nonexistent/onchainos", "STATE_PATH": str(tmp_path / "state.json"),
+           "TELEGRAM_BOT_TOKEN": "", "LLM_API_KEY": ""}
     return subprocess.run([sys.executable, "sol_dip_bot.py", *args], capture_output=True, text=True, env=env,
                           cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -95,3 +96,39 @@ def test_adopt_skips_dust():
     api = bot.OnchainOS("/nonexistent/onchainos", paper=True, state=state)
     assert not bot.adopt_sol_position(api, state, 100.0)
     assert state.position is None
+
+
+def test_telegram_commands():
+    state = bot.State(paper_usdc=5.0, paper_sol=0.01)
+    api = bot.OnchainOS("/nonexistent/onchainos", paper=True, state=state)
+    s = bot.Strategy()
+    cmd = lambda name: bot.handle_command(name, api, state, s, "W", "DRY-RUN")  # noqa: E731
+    assert "/status" in cmd("help")
+    assert "USDC: 5.0000" in cmd("saldo")
+    assert "Posisi: tidak ada" in cmd("status")
+    cmd("pause")
+    assert state.paused and "Telegram /pause" in bot.entry_block_reason(state, s, 0, time.time())
+    cmd("resume")
+    assert not state.paused
+    assert "Tidak ada posisi" in cmd("close")
+    state.position = bot.Position(entry_price=100.0, size_sol=0.005, cost_usdc=0.5, entry_ts=int(time.time()))
+    cmd("close")
+    assert bot.CLOSE_REQUESTED.is_set()
+    bot.CLOSE_REQUESTED.clear()
+
+
+def test_telegram_chat_auth_and_routing():
+    from telegram_chat import TelegramChat, llm_provider
+    sent = []
+    chat = TelegramChat("T", "42", on_command=lambda n, a: f"cmd:{n}:{a}", on_text=lambda t, h: f"ai:{len(h)}")
+    chat.send = lambda text, chat_id=None: sent.append((chat_id, text))
+    chat.handle_update({"message": {"chat": {"id": 99}, "text": "/status"}})
+    assert sent == []
+    chat.handle_update({"message": {"chat": {"id": 42}, "text": "/Status@MyBot now"}})
+    chat.handle_update({"message": {"chat": {"id": 42}, "text": "kenapa belum entry?"}})
+    assert sent == [(None, "cmd:status:now"), (None, "ai:1")]
+    unset = TelegramChat("T", "", on_command=lambda n, a: "x")
+    unset.send = lambda text, chat_id=None: sent.append((chat_id, text))
+    unset.handle_update({"message": {"chat": {"id": 7}, "text": "/start"}})
+    assert sent[-1][0] == "7" and "7" in sent[-1][1]
+    assert llm_provider("sk-ant-abc") == "anthropic" and llm_provider("sk-proj-abc") == "openai"
