@@ -120,26 +120,107 @@ See [SKILL.md](SKILL.md) for detailed usage instructions and examples.
 
 ## SOL Dip Bot — quick usage
 
-The repository includes a simple SOL buy-dip bot `sol_dip_bot.py` for demonstration.
+`sol_dip_bot.py` trades SOL/USDC on Solana through the official OKX Onchain OS CLI
+(`onchainos`) and its Agentic Wallet. Parameters come from `sol_strategy.json`.
 
-- Run a safe local test (simulates onchainos):
+- Starting capital can be SOL (`CAPITAL_ASSET=SOL`, default): when the bot has no position, wallet SOL
+  (minus a gas reserve, plus USDC account rent on first use) is treated as an open position entered at
+  the current price. No swap happens until an exit sells it to USDC.
+- Entry: when EMA5 crosses above EMA10 on closed 5m bars, buy SOL with `SIZE_PCT`% (default 10%) of the wallet's USDC.
+- Exit: sell the SOL back to USDC on -1.8% stop loss, +5% take profit, or after 144 bars (12h).
+- Risk overlays: max 1 entry per UTC day, 2-bar cooldown after an exit, pause after 2
+  consecutive losses (until UTC 00:00), and `MAX_TRADES_PER_SESSION`.
+- Open position, daily counters, and trade history persist in `sol_dip_bot_state.json`,
+  so a restart resumes an open position.
+
+### Setup
 
 ```bash
-python3 sol_dip_bot.py --dry-run --once
+npx -y @okxweb3/onchainos-installer install          # installs onchainos CLI
+npx -y skills add okx/onchainos-skills --skill '*' -a universal -y   # official OKX agent skills (.agents/skills)
+onchainos wallet login                              # log in to the Agentic Wallet
+onchainos wallet addresses --chain solana           # fund this address with SOL (or USDC + a little SOL for fees)
 ```
 
-- Continuous dry-run (daemon):
+Set per-transaction and daily limits in Agentic Wallet Policy Settings before running live.
+
+### Run
 
 ```bash
-python3 sol_dip_bot.py --dry-run
+python3 sol_dip_bot.py --dry-run --once   # one paper cycle (real market data, simulated swaps)
+python3 sol_dip_bot.py --dry-run          # continuous paper trading
+python3 sol_dip_bot.py                    # LIVE trading
+./start_sol_dip_bot.sh                    # LIVE trading in the background (nohup)
 ```
 
-- Environment variables:
+Dry-run uses real market data when `onchainos` is installed and synthetic data otherwise.
+Paper balances start at `PAPER_USDC` and persist in `sol_dip_bot_state.json.paper`.
 
-- `ONCHAINOS_BIN`: path to `onchainos` binary (default `/home/codespace/.local/bin/onchainos`).
-- `MAX_TRADES_PER_SESSION`: integer limit of trades per session (default `10`).
-- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`: required for live mode notifications.
+### Environment variables
 
-Notes:
-- Use `--dry-run` for offline testing; in live mode the script requires `onchainos` and Telegram credentials.
-- Logs are written to `sol_dip_bot.log` with rotation (1MB, 3 backups).
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ONCHAINOS_BIN` | `onchainos` on `PATH`, else `~/.local/bin/onchainos` | CLI path |
+| `MAX_TRADES_PER_SESSION` | `10` | Max entries per process run |
+| `CAPITAL_ASSET` | `SOL` | `SOL` adopts wallet SOL as a position when flat; `USDC` only trades USDC |
+| `SIZE_PCT` | `sizing.pct` in `sol_strategy.json` (10) | % of USDC per entry; use `100` for tiny wallets |
+| `GAS_RESERVE_SOL` | `0.001` | SOL never traded, kept for fees |
+| `MIN_ORDER_USDC` | `0.1` | Skip entries/adoption smaller than this |
+| `MAX_ORDER_USDC` | `0` (no cap) | Cap on a single entry |
+| `SLIPPAGE_PCT` | `1` | Swap slippage %; empty = CLI auto slippage |
+| `POLL_SECONDS` | `60` | Seconds between cycles |
+| `PAPER_USDC`, `PAPER_SOL` | `100`, `0` | Starting paper balances for dry-run |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | unset | Optional Telegram notifications |
+
+| `LLM_API_KEY` | unset | Telegram AI chat key: Gemini `AIza...`/`AQ....` (free, aistudio.google.com/apikey), Groq `gsk_...` (free), OpenAI `sk-...`, or Anthropic `sk-ant-...` |
+| `LLM_MODEL` | `gemini-flash-lite-latest` / `llama-3.3-70b-versatile` / `gpt-4o-mini` / `claude-3-5-haiku-latest` | Override the chat model |
+
+Logs: stdout and `sol_dip_bot.log` (rotating, 1MB x 3).
+
+### Telegram control and AI chat
+
+With `TELEGRAM_BOT_TOKEN` set, the bot listens to Telegram (long polling, no webhook needed).
+It answers only `TELEGRAM_CHAT_ID`. If the chat ID is unset, send `/start` to the bot and it replies with your chat ID.
+
+| Command | Action |
+| --- | --- |
+| `/status` | Position, PnL, price, EMAs, limits |
+| `/saldo` | Wallet SOL and USDC |
+| `/history` | Last 5 trades |
+| `/pause`, `/resume` | Stop or resume new entries (open positions keep SL/TP/max hold) |
+| `/close` | Sell the open position to USDC now |
+
+Any other text goes to the LLM in `LLM_API_KEY`. The bot sends its status, recent trades, and recent log lines as context.
+The AI only answers questions. It cannot trade.
+
+## Chat with Devin from Telegram (`devin_telegram_bridge.py`)
+
+The bridge forwards your Telegram messages to a Devin session and sends Devin's replies back to Telegram.
+It is unofficial, and every session uses Devin ACUs.
+
+1. Create a service user API key (`cog_...`) in Devin under **Settings > Devin API > Service users**.
+2. Run the bridge on a host that stays on (VPS or server):
+
+```bash
+export TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=... DEVIN_API_KEY=cog_... DEVIN_ORG_ID=org-...
+# optional: DEVIN_SESSION_ID=devin-... to continue an existing session, DEVIN_MAX_ACU=10 to cap new sessions
+nohup python3 devin_telegram_bridge.py > devin_bridge.out 2>&1 &
+```
+
+Only one process can poll a Telegram bot. When the bridge runs, start the trading bot with `TELEGRAM_LISTEN=0`.
+The bot still sends trade notifications.
+Telegram commands: `/new <message>` starts a new session and `/session` shows the current session link.
+
+### Running the bridge on GitHub Actions
+
+`.github/workflows/telegram-devin-bridge.yml` runs the bridge for up to ~5h45m per job.
+A schedule every 30 minutes restarts it, and a concurrency group keeps only one poller.
+The session state is carried between jobs with the Actions cache.
+
+1. Add repository secrets under **Settings > Secrets and variables > Actions**:
+   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `DEVIN_API_KEY`, `DEVIN_ORG_ID`.
+2. Optional repository variables: `DEVIN_SESSION_ID` (attach to an existing session) and `DEVIN_MAX_ACU` (default `10`).
+3. Scheduled workflows only run from the default branch (`develop`). Start the first run from the Actions tab
+   with **Run workflow**.
+
+GitHub pauses scheduled workflows in public repositories after 60 days without repository activity.
