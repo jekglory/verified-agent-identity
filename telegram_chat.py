@@ -14,7 +14,7 @@ DEFAULT_ANTHROPIC_MODEL = "claude-3-5-haiku-latest"
 # OpenAI-compatible chat endpoints: provider -> (url, default model)
 OPENAI_COMPATIBLE = {
     "openai": ("https://api.openai.com/v1/chat/completions", "gpt-4o-mini"),
-    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.5-flash"),
+    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-flash-lite-latest"),
     "groq": ("https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile"),
 }
 
@@ -33,7 +33,7 @@ def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: in
 def llm_provider(api_key: str) -> str:
     if api_key.startswith("sk-ant-"):
         return "anthropic"
-    if api_key.startswith("AIza"):
+    if api_key.startswith(("AIza", "AQ.")):
         return "gemini"
     if api_key.startswith("gsk_"):
         return "groq"

@@ -172,8 +172,8 @@ Paper balances start at `PAPER_USDC` and persist in `sol_dip_bot_state.json.pape
 | `PAPER_USDC`, `PAPER_SOL` | `100`, `0` | Starting paper balances for dry-run |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | unset | Optional Telegram notifications |
 
-| `LLM_API_KEY` | unset | Telegram AI chat key: Gemini `AIza...` (free, aistudio.google.com/apikey), Groq `gsk_...` (free), OpenAI `sk-...`, or Anthropic `sk-ant-...` |
-| `LLM_MODEL` | `gemini-2.5-flash` / `llama-3.3-70b-versatile` / `gpt-4o-mini` / `claude-3-5-haiku-latest` | Override the chat model |
+| `LLM_API_KEY` | unset | Telegram AI chat key: Gemini `AIza...`/`AQ....` (free, aistudio.google.com/apikey), Groq `gsk_...` (free), OpenAI `sk-...`, or Anthropic `sk-ant-...` |
+| `LLM_MODEL` | `gemini-flash-lite-latest` / `llama-3.3-70b-versatile` / `gpt-4o-mini` / `claude-3-5-haiku-latest` | Override the chat model |
 
 Logs: stdout and `sol_dip_bot.log` (rotating, 1MB x 3).
 
