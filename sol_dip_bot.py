@@ -41,7 +41,7 @@ def _default_onchainos_bin() -> str:
 
 ONCHAINOS_BIN = os.getenv("ONCHAINOS_BIN") or _default_onchainos_bin()
 MAX_TRADES_PER_SESSION = int(os.getenv("MAX_TRADES_PER_SESSION", "10"))
-MIN_ORDER_USDC = float(os.getenv("MIN_ORDER_USDC", "1"))
+MIN_ORDER_USDC = float(os.getenv("MIN_ORDER_USDC", "0.1"))
 MAX_ORDER_USDC = float(os.getenv("MAX_ORDER_USDC", "0"))  # 0 = no cap
 SLIPPAGE_PCT = os.getenv("SLIPPAGE_PCT", "1")  # empty string = CLI autoSlippage
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "60"))

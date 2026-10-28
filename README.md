@@ -159,7 +159,7 @@ Paper balances start at `PAPER_USDC` and persist in `sol_dip_bot_state.json.pape
 | --- | --- | --- |
 | `ONCHAINOS_BIN` | `onchainos` on `PATH`, else `~/.local/bin/onchainos` | CLI path |
 | `MAX_TRADES_PER_SESSION` | `10` | Max entries per process run |
-| `MIN_ORDER_USDC` | `1` | Skip entries smaller than this |
+| `MIN_ORDER_USDC` | `0.1` | Skip entries smaller than this |
 | `MAX_ORDER_USDC` | `0` (no cap) | Cap on a single entry |
 | `SLIPPAGE_PCT` | `1` | Swap slippage %; empty = CLI auto slippage |
 | `POLL_SECONDS` | `60` | Seconds between cycles |
