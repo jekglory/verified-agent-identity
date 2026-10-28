@@ -35,7 +35,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
           DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
-          DEVIN_SESSION_ID: ${{ vars.DEVIN_SESSION_ID }}
+          DEVIN_SESSION_ID: ${{ vars.DEVIN_SESSION_ID || 'devin-38eb2641dfcb4c01a5c6bcb032ca8c46' }}
           DEVIN_MAX_ACU: ${{ vars.DEVIN_MAX_ACU || '10' }}
         run: timeout 345m python3 devin_telegram_bridge.py || [ $? -eq 124 ]
       - name: Save bridge state
