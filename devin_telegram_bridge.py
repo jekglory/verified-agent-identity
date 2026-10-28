@@ -95,6 +95,15 @@ class Bridge:
             self.state["seen"] = [m["event_id"] for m in items]
             self.save()
 
+    def use_default(self, devin_id: str) -> None:
+        """Attach to DEVIN_SESSION_ID once; a later /new session survives restarts until the default changes."""
+        if not devin_id or devin_id == self.state.get("default_session"):
+            return
+        self.attach(devin_id)
+        with self.lock:
+            self.state["default_session"] = devin_id
+            self.save()
+
     def on_command(self, name: str, args: str) -> str:
         if name in ("start", "help"):
             return HELP
@@ -155,8 +164,7 @@ def main() -> None:
     max_acu = int(os.environ["DEVIN_MAX_ACU"]) if os.getenv("DEVIN_MAX_ACU") else None
     bridge = Bridge(devin, chat, max_acu=max_acu)
     chat.on_command, chat.on_text = bridge.on_command, bridge.on_text
-    if os.getenv("DEVIN_SESSION_ID") and os.environ["DEVIN_SESSION_ID"] != bridge.state["session_id"]:
-        bridge.attach(os.environ["DEVIN_SESSION_ID"])
+    bridge.use_default(os.getenv("DEVIN_SESSION_ID", ""))
     print(f"Devin bridge running | session {bridge.state['session_id'] or '(new on first message)'}", flush=True)
     bridge.run()
 

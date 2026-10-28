@@ -56,3 +56,17 @@ def test_attach_skips_history(tmp_path):
     bridge = Bridge(devin, chat, state_path=str(tmp_path / "s.json"))
     bridge.attach("devin-xyz")
     assert bridge.poll_once() == 0 and chat.out == []
+
+
+def test_default_session_does_not_override_new(tmp_path):
+    devin, chat = FakeDevin(), FakeChat()
+    path = str(tmp_path / "s.json")
+    bridge = Bridge(devin, chat, state_path=path)
+    bridge.use_default("devin-xyz")
+    assert bridge.state["session_id"] == "devin-xyz"
+    bridge.on_command("new", "halo")
+    restarted = Bridge(devin, chat, state_path=path)
+    restarted.use_default("devin-xyz")
+    assert restarted.state["session_id"] == "devin-abc"
+    restarted.use_default("devin-other")
+    assert restarted.state["session_id"] == "devin-other"
