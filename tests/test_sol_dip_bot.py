@@ -132,3 +132,4 @@ def test_telegram_chat_auth_and_routing():
     unset.handle_update({"message": {"chat": {"id": 7}, "text": "/start"}})
     assert sent[-1][0] == "7" and "7" in sent[-1][1]
     assert llm_provider("sk-ant-abc") == "anthropic" and llm_provider("sk-proj-abc") == "openai"
+    assert llm_provider("AIzaXYZ") == "gemini" and llm_provider("gsk_abc") == "groq"

@@ -10,8 +10,13 @@ from typing import Callable
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 MAX_MESSAGE_LEN = 4000
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_ANTHROPIC_MODEL = "claude-3-5-haiku-latest"
+# OpenAI-compatible chat endpoints: provider -> (url, default model)
+OPENAI_COMPATIBLE = {
+    "openai": ("https://api.openai.com/v1/chat/completions", "gpt-4o-mini"),
+    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini-2.5-flash"),
+    "groq": ("https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile"),
+}
 
 
 def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: int = 60) -> dict:
@@ -26,21 +31,29 @@ def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: in
 
 
 def llm_provider(api_key: str) -> str:
-    return "anthropic" if api_key.startswith("sk-ant-") else "openai"
+    if api_key.startswith("sk-ant-"):
+        return "anthropic"
+    if api_key.startswith("AIza"):
+        return "gemini"
+    if api_key.startswith("gsk_"):
+        return "groq"
+    return "openai"
 
 
 def ask_llm(api_key: str, system: str, messages: list[dict], model: str = "") -> str:
-    """Send a chat to OpenAI or Anthropic (picked from the key prefix) and return the reply text."""
-    if llm_provider(api_key) == "anthropic":
+    """Send a chat to Anthropic, OpenAI, Gemini, or Groq (picked from the key prefix); return the reply."""
+    provider = llm_provider(api_key)
+    if provider == "anthropic":
         data = _post_json(
             "https://api.anthropic.com/v1/messages",
             {"model": model or DEFAULT_ANTHROPIC_MODEL, "max_tokens": 800, "system": system, "messages": messages},
             {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
         )
         return "".join(part.get("text", "") for part in data.get("content", [])).strip()
+    url, default_model = OPENAI_COMPATIBLE[provider]
     data = _post_json(
-        "https://api.openai.com/v1/chat/completions",
-        {"model": model or DEFAULT_OPENAI_MODEL, "max_tokens": 800,
+        url,
+        {"model": model or default_model, "max_tokens": 800,
          "messages": [{"role": "system", "content": system}, *messages]},
         {"Authorization": f"Bearer {api_key}"},
     )
