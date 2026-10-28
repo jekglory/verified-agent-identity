@@ -1,0 +1,46 @@
+name: Telegram Devin bridge
+
+# Runs devin_telegram_bridge.py for ~5h45m per job. The schedule restarts it, and the
+# concurrency group keeps a single poller so Telegram getUpdates never conflicts.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: telegram-devin-bridge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore bridge state
+        uses: actions/cache/restore@v4
+        with:
+          path: devin_bridge_state.json
+          key: devin-bridge-state-${{ github.run_id }}
+          restore-keys: devin-bridge-state-
+      - name: Run bridge
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+          DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+          DEVIN_SESSION_ID: ${{ vars.DEVIN_SESSION_ID }}
+          DEVIN_MAX_ACU: ${{ vars.DEVIN_MAX_ACU || '10' }}
+        run: timeout 345m python3 devin_telegram_bridge.py || [ $? -eq 124 ]
+      - name: Save bridge state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: devin_bridge_state.json
+          key: devin-bridge-state-${{ github.run_id }}

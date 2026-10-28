@@ -210,3 +210,17 @@ nohup python3 devin_telegram_bridge.py > devin_bridge.out 2>&1 &
 Only one process can poll a Telegram bot. When the bridge runs, start the trading bot with `TELEGRAM_LISTEN=0`.
 The bot still sends trade notifications.
 Telegram commands: `/new <message>` starts a new session and `/session` shows the current session link.
+
+### Running the bridge on GitHub Actions
+
+`.github/workflows/telegram-devin-bridge.yml` runs the bridge for up to ~5h45m per job.
+A schedule every 30 minutes restarts it, and a concurrency group keeps only one poller.
+The session state is carried between jobs with the Actions cache.
+
+1. Add repository secrets under **Settings > Secrets and variables > Actions**:
+   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `DEVIN_API_KEY`, `DEVIN_ORG_ID`.
+2. Optional repository variables: `DEVIN_SESSION_ID` (attach to an existing session) and `DEVIN_MAX_ACU` (default `10`).
+3. Scheduled workflows only run from the default branch (`develop`). Start the first run from the Actions tab
+   with **Run workflow**.
+
+GitHub pauses scheduled workflows in public repositories after 60 days without repository activity.
